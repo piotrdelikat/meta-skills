@@ -1,0 +1,32 @@
+{
+  "name": "meta-skills",
+  "version": "1.0.0",
+  "description": "A collection of reusable agent skills for AI-assisted development",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/piotrdelikat/meta-skills.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "scripts": {
+    "postinstall": "node install-skills.mjs",
+    "preuninstall": "node uninstall-skills.mjs"
+  },
+  "files": [
+    "skills",
+    "templates",
+    "install-skills.mjs",
+    "uninstall-skills.mjs"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "skills",
+    "claude",
+    "gemini",
+    "automation"
+  ]
+}
