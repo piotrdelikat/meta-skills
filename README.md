@@ -7,11 +7,23 @@ A collection of reusable agent skills for AI-assisted development. Install once,
 - **Modular skills**: Pick and use focused capabilities
 - **Auto-install**: Skills automatically copy to your project on npm install
 - **Clean updates**: Reinstalling updates only package skills, preserves your custom ones
-- **IDE compatible**: Works with `.agent/` and `.claude/` directories
+- **Multi-agent support**: Works with OpenCode, Windsurf, Antigravity, and Claude Code
+
+## 🤖 Agent Compatibility
+
+| Agent | Skills Directory | Context File |
+|-------|------------------|--------------|
+| OpenCode | `.opencode/skill/` | `AGENTS.md` |
+| Windsurf | `.windsurf/skills/` | `AGENTS.md` |
+| Antigravity | `.agent/skills/` | `AGENTS.md` |
+| Claude Code | `.claude/skills/` | `CLAUDE.md` |
+
+> **Note:** All agents now support `AGENTS.md` as the standard context file.
+> Use `skills-config-check --fix` to sync skills across all agent directories.
 
 ## ⚡️ Installation
 
-### From GitHub Packages
+### From GitHub
 
 ```bash
 npm install @piotrdelikat/meta-skills
@@ -26,14 +38,32 @@ npm install /path/to/meta-skills
 The postinstall script will:
 1. Detect your agent directory (`.agent/` or `.claude/`)
 2. Copy skills to `{agent-dir}/skills/`
-3. Update `{agent-dir}/rules/skills.md` with skill descriptions
+3. Update `{agent-dir}/rules/skills.md` with skill index
 
 ## 📦 Included Skills
 
 | Skill | Description |
 |-------|-------------|
+| **skills-config-check** | Validate agent configuration, sync skills across IDEs |
 | **skill-authoring** | Create new agent skills following best practices |
 | **skill-discovery** | Analyze project gaps, propose missing skills |
+| **document** | Create and maintain project documentation |
+| **audit** | Assess health of installed skills |
+| **reflect** | Self-improvement after task completion |
+
+## 🔧 Configuration Check
+
+After installing, verify your setup:
+
+```bash
+node .agent/skills/skills-config-check/scripts/check-config.mjs
+```
+
+Auto-fix missing directories and sync `CLAUDE.md`:
+
+```bash
+node .agent/skills/skills-config-check/scripts/check-config.mjs --fix
+```
 
 ## 🔄 Updating
 
@@ -44,14 +74,6 @@ npm install meta-skills@latest
 ```
 
 Only package-provided skills are updated. Your custom project skills remain untouched.
-
-## 🗑️ Uninstalling
-
-```bash
-npm uninstall meta-skills
-```
-
-This removes only the skills that were installed by this package.
 
 ## 📁 Structure
 

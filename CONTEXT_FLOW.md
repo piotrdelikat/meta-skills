@@ -2,6 +2,8 @@
 
 ## The Context Flow
 
+Modern agents like Antigravity, OpenCode, and Windsurf **automatically discover** skills from their respective skills directories. Here's how it works:
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Agent Starts                                                 │
@@ -9,20 +11,22 @@
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Reads: .agent/rules/skills.md                               │
-│ (because frontmatter has `trigger: always_on`)              │
+│ Agent scans skills directory:                               │
+│ - Antigravity: .agent/skills/                               │
+│ - OpenCode: .opencode/skill/                                │
+│ - Windsurf: .windsurf/skills/                               │
+│ - Claude Code: .claude/skills/                              │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Agent sees skill descriptions in context:                   │
+│ Agent reads YAML frontmatter from each SKILL.md:            │
 │                                                              │
-│ | Skill | Description |                                     │
-│ |-------|-------------|                                     │
-│ | reflect | "Self-improvement mechanism triggered after    │
-│ |         | task completion or issue resolution..."        │
-│ | document | "Create and maintain project documentation..." │
-│ | audit | "Assess health of installed skills..."           │
+│ ---                                                          │
+│ name: reflect                                                │
+│ description: Self-improvement mechanism triggered after      │
+│   task completion...                                         │
+│ ---                                                          │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -30,7 +34,7 @@
 │ Agent works on task...                                       │
 │ - Completes a feature                                        │
 │ - Fixes a bug                                                │
-│ - User corrects something                                    │
+│ - User provides feedback                                     │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -42,24 +46,78 @@
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Agent reads: .agent/skills/reflect/SKILL.md                 │
-│ (Full detailed instructions)                                 │
+│ Agent reads full SKILL.md for detailed instructions         │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Agent executes reflect workflow:                            │
-│ 1. Switch to Critic persona                                 │
-│ 2. Scan session for corrections/approvals                   │
-│ 3. Categorize learnings                                     │
-│ 4. Propose updates                                          │
-│ 5. Request user approval                                    │
+│ Agent executes skill workflow                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## What's in skills.md (Always in Context)
+## Progressive Disclosure Pattern
 
-When you install meta-skills, the `skills.md` file looks like this:
+Skills use a two-level loading approach:
+
+### Level 1: Discovery (Lightweight)
+
+When a conversation starts, the agent reads only the **YAML frontmatter** from each skill:
+
+```yaml
+---
+name: reflect
+description: |
+  Self-improvement mechanism triggered after task completion.
+  Analyzes session for corrections and successes.
+---
+```
+
+This tells the agent:
+- **What** the skill does
+- **When** to use it
+
+### Level 2: Activation (On-Demand)
+
+When the agent decides to use a skill, it reads the **full SKILL.md** with:
+- Detailed workflows
+- Step-by-step instructions
+- Examples and anti-patterns
+
+## Why This Works
+
+**Memory Efficient:**
+- Only skill descriptions are loaded initially (~200 chars each)
+- Full instructions loaded only when needed
+
+**Context Aware:**
+- Agent knows all available skills from descriptions
+- Can choose appropriate skill for the situation
+
+**Self-Triggering:**
+- Good descriptions enable agent to self-initiate skills
+- "triggered after task completion" → agent knows when to consider it
+
+## Agent-Specific Notes
+
+### Antigravity
+- Auto-discovers skills from `.agent/skills/`
+- No index file required
+- Reads AGENTS.md for project context
+
+### OpenCode / Windsurf
+- Discovers skills from respective directories
+- Both support AGENTS.md as context file
+
+### Claude Code
+- Uses `.claude/skills/` directory
+- Requires CLAUDE.md (copy of AGENTS.md works)
+
+## Skills Index File (Optional)
+
+The `skills.md` file in `.agent/rules/` is **optional** but can help with:
+- Human-readable skill index
+- Custom skill ordering
+- Additional context for agents that don't auto-discover
 
 ```markdown
 ---
@@ -68,109 +126,17 @@ trigger: always_on
 
 # Agent Skills
 
-This file indexes available agent skills.
-
-<!-- META-SKILLS:START -->
-## Meta-Skills (Installed Package)
-
-| Skill | Path | Description |
-|-------|------|-------------|
-| **skill-authoring** | [skills/skill-authoring/SKILL.md](./skills/skill-authoring/SKILL.md) | Create new agent skills following best practices. Use when building a new skill, documenting a workflow, or structuring reusable agent capabilities. |
-| **skill-discovery** | [skills/skill-discovery/SKILL.md](./skills/skill-discovery/SKILL.md) | Analyze project to identify missing skills and knowledge gaps. Use when assessing what documentation or capabilities the agent lacks, or when planning improvements to agent effectiveness. |
-| **document** | [skills/document/SKILL.md](./skills/document/SKILL.md) | Create and maintain project documentation. Use for initial docs creation, updating existing docs, and ensuring documentation stays current with date tracking and structured templates. |
-| **audit** | [skills/audit/SKILL.md](./skills/audit/SKILL.md) | Assess health of installed skills against project context. Identifies redundant skills to merge, overloaded skills to branch, and irrelevant skills to remove. Use periodically or when skill collection grows. |
-| **reflect** | [skills/reflect/SKILL.md](./skills/reflect/SKILL.md) | Self-improvement mechanism triggered after task completion or issue resolution. Analyzes session for corrections and successes, proposes updates to skills and documentation. Uses Producer-Critic pattern for objective assessment. |
-<!-- META-SKILLS:END -->
+| Skill | Description |
+|-------|-------------|
+| **reflect** | Self-improvement after task completion |
+| **document** | Create project documentation |
 ```
-
-## The Key Mechanism
-
-### 1. Description in Context (Lightweight)
-
-The **description** from each skill's frontmatter is **always** in the agent's context via `skills.md`:
-
-```yaml
----
-name: reflect
-trigger: hook
-description: |
-  Self-improvement mechanism triggered after task completion or issue resolution.
-  Analyzes session for corrections and successes, proposes updates to skills
-  and documentation. Uses Producer-Critic pattern for objective assessment.
----
-```
-
-This description tells the agent:
-- **What** the skill does
-- **When** to use it ("after task completion or issue resolution")
-- **How** it works ("Producer-Critic pattern")
-
-### 2. Full Instructions (On-Demand)
-
-When the agent decides to use the skill, it reads the **full SKILL.md** which contains:
-- Detailed workflows
-- Step-by-step instructions
-- Examples
-- Anti-patterns
-- Integration points
-
-## Why This Works
-
-**Memory Efficient:**
-- Only skill descriptions are always loaded (~200 chars each)
-- Full instructions loaded only when needed
-
-**Context Aware:**
-- Agent knows all available skills
-- Descriptions hint at when to use each skill
-- Agent can choose appropriate skill for the situation
-
-**Self-Triggering:**
-- Good descriptions enable agent to self-initiate skills
-- "triggered after task completion" → agent knows to consider it
-- "Use when assessing..." → agent knows when it's relevant
-
-## The `trigger: hook` Frontmatter
-
-```yaml
-trigger: hook
-```
-
-This is **metadata for humans** and **documentation for the agent**. It signals:
-- This skill is meant to be run at specific moments
-- Not a direct user request, but a process hook
-- Agent should consider it at natural breakpoints
-
-## Example: How Reflect Gets Triggered
-
-**Scenario:** Agent just fixed a bug after user correction
-
-**Agent's internal reasoning:**
-1. "I just completed a task (bug fix)"
-2. "User corrected my initial approach"
-3. "I see 'reflect' skill in my context"
-4. "Description says: 'triggered after task completion or issue resolution'"
-5. "This matches the current situation"
-6. "Let me read the full reflect SKILL.md"
-7. "Ah, I should switch to Critic persona and analyze what I learned"
-
-**Agent's action:**
-> "I notice this task involved a correction. Would you like me to reflect on this session to capture what I learned?"
-
-Or the agent might proactively say:
-> "Let me reflect on this session. I'll switch to Critic mode and analyze what happened..."
 
 ## Summary
 
-| Component | Purpose | Always in Context? |
-|-----------|---------|-------------------|
-| `skills.md` | Index with descriptions | ✅ Yes (trigger: always_on) |
-| Skill descriptions | Tell agent when to use skill | ✅ Yes (in skills.md) |
-| Full SKILL.md | Detailed instructions | ❌ No (loaded on-demand) |
-| `trigger: hook` | Metadata signaling | ✅ Yes (in description context) |
-
-The agent doesn't need explicit instructions to "run reflect after tasks" because:
-1. The description is always in context
-2. The description clearly states when to use it
-3. The agent can read and understand this guidance
-4. The agent can self-initiate based on the description
+| Component | Purpose | Required? |
+|-----------|---------|-----------|
+| `/skills/*/SKILL.md` | Skill instructions | ✅ Yes |
+| YAML frontmatter | Discovery metadata | ✅ Yes |
+| `AGENTS.md` | Project context | Recommended |
+| `skills.md` index | Human-readable list | Optional |
