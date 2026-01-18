@@ -3,8 +3,8 @@
 /**
  * Meta-Skills Installer
  * 
- * Postinstall script that copies skills to the target project's .agent or .claude directory.
- * Only overwrites skills with the same name as those in this package.
+ * Postinstall script that copies skills to all agent/IDE directories.
+ * Supports: OpenCode, Windsurf, Antigravity, Claude Code
  */
 
 import fs from "fs";
@@ -16,12 +16,19 @@ const __dirname = path.dirname(__filename);
 
 // Configuration
 const SKILLS_SOURCE = path.join(__dirname, "skills");
-const RULES_TEMPLATE = path.join(__dirname, "templates", "skills.md.template");
-const MARKER_START = "<!-- META-SKILLS:START -->";
-const MARKER_END = "<!-- META-SKILLS:END -->";
+const PACKAGE_NAME = "meta-skills";
+
+// All agent skill directories to install to
+const AGENT_DIRS = [
+  { name: "Antigravity", skillsDir: ".agent/skills", rulesDir: ".agent/rules" },
+  { name: "OpenCode", skillsDir: ".opencode/skill", rulesDir: null },
+  { name: "Windsurf", skillsDir: ".windsurf/skills", rulesDir: null },
+  { name: "Claude Code", skillsDir: ".claude/skills", rulesDir: null },
+];
 
 /**
- * Find the project root - npm sets INIT_CWD to the directory where npm was run
+ * Find the project root
+ * Priority: 1) INIT_CWD (npm sets this), 2) cwd(), 3) walk up from script
  */
 function findProjectRoot() {
   // INIT_CWD is set by npm to the original working directory
@@ -29,35 +36,24 @@ function findProjectRoot() {
     return process.env.INIT_CWD;
   }
   
-  // Fallback: walk up from script location to find package.json outside node_modules
+  // Use current working directory (for manual runs)
+  const cwd = process.cwd();
+  
+  // If cwd has package.json and isn't in node_modules, use it
+  if (fs.existsSync(path.join(cwd, "package.json")) && !cwd.includes("node_modules")) {
+    return cwd;
+  }
+  
+  // Fallback: walk up from script location
   let dir = __dirname;
   while (dir !== path.parse(dir).root) {
-    if (
-      fs.existsSync(path.join(dir, "package.json")) &&
-      !dir.includes("node_modules")
-    ) {
+    if (fs.existsSync(path.join(dir, "package.json")) && !dir.includes("node_modules")) {
       return dir;
     }
     dir = path.dirname(dir);
   }
-  return process.cwd();
-}
-
-/**
- * Find the agent directory (.agent or .claude)
- */
-function findAgentDir(projectRoot) {
-  const candidates = [".agent", ".claude"];
   
-  for (const candidate of candidates) {
-    const candidatePath = path.join(projectRoot, candidate);
-    if (fs.existsSync(candidatePath)) {
-      return { path: candidatePath, name: candidate };
-    }
-  }
-  
-  // Default to .agent if neither exists
-  return { path: path.join(projectRoot, ".agent"), name: ".agent" };
+  return cwd;
 }
 
 /**
@@ -90,17 +86,13 @@ function parseSkillFrontmatter(skillPath) {
   }
   
   const frontmatter = frontmatterMatch[1];
-  
-  // Parse name
   const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
   
-  // Parse description (handles multi-line YAML with | or plain values)
   let description = "No description available";
   const descLineMatch = frontmatter.match(/^description:\s*(.*)$/m);
   
   if (descLineMatch) {
     if (descLineMatch[1].trim() === "|" || descLineMatch[1].trim() === "") {
-      // Multi-line: collect indented lines after "description:"
       const lines = frontmatter.split("\n");
       const descIndex = lines.findIndex(l => l.startsWith("description:"));
       if (descIndex !== -1) {
@@ -117,7 +109,6 @@ function parseSkillFrontmatter(skillPath) {
         }
       }
     } else {
-      // Single line description
       description = descLineMatch[1].trim();
     }
   }
@@ -168,69 +159,54 @@ function deleteRecursive(dir) {
 }
 
 /**
- * Generate the skills table markdown for our package skills
+ * Install skills to a single agent directory
  */
-function generateSkillsTable(skillsDir) {
-  const packageSkillNames = getPackageSkillNames();
-  const rows = [];
+function installToAgent(projectRoot, agent, packageSkillNames, verbose = true) {
+  const skillsDir = path.join(projectRoot, agent.skillsDir);
+  let installed = 0;
+  let updated = 0;
+  
+  // Create skills directory
+  fs.mkdirSync(skillsDir, { recursive: true });
   
   for (const skillName of packageSkillNames) {
-    const skillPath = path.join(skillsDir, skillName);
-    const meta = parseSkillFrontmatter(skillPath);
+    const targetSkillPath = path.join(skillsDir, skillName);
+    const sourceSkillPath = path.join(SKILLS_SOURCE, skillName);
     
-    if (meta) {
-      rows.push(`| **${meta.name}** | [skills/${skillName}/SKILL.md](./skills/${skillName}/SKILL.md) | ${meta.description} |`);
+    if (fs.existsSync(targetSkillPath)) {
+      deleteRecursive(targetSkillPath);
+      updated++;
+    } else {
+      installed++;
     }
+    
+    copyRecursive(sourceSkillPath, targetSkillPath);
   }
   
-  return rows.join("\n");
+  // Write version file for tracking
+  const versionFile = path.join(skillsDir, ".meta-skills-version");
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf-8"));
+  fs.writeFileSync(versionFile, JSON.stringify({
+    version: pkg.version,
+    installedAt: new Date().toISOString(),
+    skills: packageSkillNames,
+  }, null, 2));
+  
+  return { installed, updated };
 }
 
 /**
- * Update or create the skills.md file with our package skills
+ * Sync CLAUDE.md from AGENTS.md for Claude Code compatibility
  */
-function updateSkillsMd(rulesDir, skillsDir) {
-  const skillsMdPath = path.join(rulesDir, "skills.md");
-  const skillsTable = generateSkillsTable(skillsDir);
+function syncClaudeMd(projectRoot) {
+  const agentsMd = path.join(projectRoot, "AGENTS.md");
+  const claudeMd = path.join(projectRoot, "CLAUDE.md");
   
-  const packageSection = `${MARKER_START}
-## Meta-Skills (Installed Package)
-
-| Skill | Path | Description |
-|-------|------|-------------|
-${skillsTable}
-${MARKER_END}`;
-
-  if (fs.existsSync(skillsMdPath)) {
-    let content = fs.readFileSync(skillsMdPath, "utf-8");
-    
-    // Check if we have existing markers
-    const markerRegex = new RegExp(`${MARKER_START}[\\s\\S]*?${MARKER_END}`, "g");
-    
-    if (markerRegex.test(content)) {
-      // Replace existing section
-      content = content.replace(markerRegex, packageSection);
-    } else {
-      // Append to end
-      content = content.trimEnd() + "\n\n" + packageSection + "\n";
-    }
-    
-    fs.writeFileSync(skillsMdPath, content);
-  } else {
-    // Create new skills.md with frontmatter
-    const newContent = `---
-trigger: always_on
----
-
-# Agent Skills
-
-This file indexes available agent skills.
-
-${packageSection}
-`;
-    fs.mkdirSync(rulesDir, { recursive: true });
-    fs.writeFileSync(skillsMdPath, newContent);
+  if (fs.existsSync(agentsMd) && !fs.existsSync(claudeMd)) {
+    fs.copyFileSync(agentsMd, claudeMd);
+    return true;
   }
+  return false;
 }
 
 /**
@@ -239,13 +215,6 @@ ${packageSection}
 async function install() {
   try {
     const projectRoot = findProjectRoot();
-    const agentDir = findAgentDir(projectRoot);
-    const skillsDir = path.join(agentDir.path, "skills");
-    const rulesDir = path.join(agentDir.path, "rules");
-    
-    console.log(`📦 Installing meta-skills to: ${agentDir.path}`);
-    
-    // Get list of skills in our package
     const packageSkillNames = getPackageSkillNames();
     
     if (packageSkillNames.length === 0) {
@@ -253,30 +222,34 @@ async function install() {
       return;
     }
     
-    // Create skills directory if it doesn't exist
-    fs.mkdirSync(skillsDir, { recursive: true });
+    console.log(`📦 Installing meta-skills to: ${projectRoot}`);
+    console.log("");
     
-    // Only remove and replace skills that have the same name as ours
-    for (const skillName of packageSkillNames) {
-      const targetSkillPath = path.join(skillsDir, skillName);
-      const sourceSkillPath = path.join(SKILLS_SOURCE, skillName);
+    let totalInstalled = 0;
+    let totalUpdated = 0;
+    let agentsConfigured = 0;
+    
+    // Install to all agent directories
+    for (const agent of AGENT_DIRS) {
+      const { installed, updated } = installToAgent(projectRoot, agent, packageSkillNames, true);
       
-      // Remove existing skill with same name (clean update)
-      if (fs.existsSync(targetSkillPath)) {
-        console.log(`  🔄 Updating skill: ${skillName}`);
-        deleteRecursive(targetSkillPath);
-      } else {
-        console.log(`  ➕ Installing skill: ${skillName}`);
+      if (installed > 0 || updated > 0) {
+        const status = updated > 0 ? "🔄" : "✅";
+        console.log(`${status} ${agent.name} (${agent.skillsDir}): ${installed + updated} skills`);
+        totalInstalled += installed;
+        totalUpdated += updated;
+        agentsConfigured++;
       }
-      
-      // Copy fresh version
-      copyRecursive(sourceSkillPath, targetSkillPath);
     }
     
-    // Update skills.md index
-    updateSkillsMd(rulesDir, skillsDir);
+    // Sync CLAUDE.md if AGENTS.md exists
+    if (syncClaudeMd(projectRoot)) {
+      console.log("📄 Created CLAUDE.md (copy of AGENTS.md)");
+    }
     
-    console.log(`✅ Meta-skills installed! (${packageSkillNames.length} skills)`);
+    console.log("");
+    console.log(`✅ Meta-skills installed!`);
+    console.log(`   ${packageSkillNames.length} skills → ${agentsConfigured} agent directories`);
     console.log(`   Skills: ${packageSkillNames.join(", ")}`);
     
   } catch (err) {

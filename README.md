@@ -36,9 +36,13 @@ npm install /path/to/meta-skills
 ```
 
 The postinstall script will:
-1. Detect your agent directory (`.agent/` or `.claude/`)
-2. Copy skills to `{agent-dir}/skills/`
-3. Update `{agent-dir}/rules/skills.md` with skill index
+1. Install skills to all agent directories:
+   - `.agent/skills/` (Antigravity)
+   - `.opencode/skill/` (OpenCode)
+   - `.windsurf/skills/` (Windsurf)
+   - `.claude/skills/` (Claude Code)
+2. Create `CLAUDE.md` from `AGENTS.md` (if exists)
+3. Write version tracking file (`.meta-skills-version`)
 
 ## 📦 Included Skills
 
